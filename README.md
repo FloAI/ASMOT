@@ -45,7 +45,7 @@ Install directly from GitHub:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("yourusername/ASMOT")
+devtools::install_github("FloAI/ASMOT")
 
 ```
 
