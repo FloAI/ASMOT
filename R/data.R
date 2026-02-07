@@ -28,7 +28,7 @@
 
 #' Synthetic Data (HTLN Model)
 #'
-#' Synthetic data generated using a High-Throughput Latent Network (HTLN) model.
+#' Synthetic data generated using a Hurdle-Truncated Log-Normal(HTLN) model.
 #' Intended for benchmarking against ZINB.
 #'
 #' @format A numeric matrix with 50 rows and 20 columns.
