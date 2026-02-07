@@ -150,7 +150,9 @@ If you use **ASMOT** in your research, please cite:
 
 > [Your Name], et al. (2024). "Auditing Synthetic Metagenomic Data with Multi-Scale Optimal Transport." *[Journal Name/Preprint]*.
 
-##References
+---
+## References
+
 >
 
 ## License
