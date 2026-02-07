@@ -1,8 +1,20 @@
-#' @title Compute Realism Score with Adaptive Weights
-#' @param weights Either "auto" (Inverse Null Variance) or a numeric vector of length 3.
+#' @title Perform Full ASMOT Audit
+#' @description 
+#' Runs the complete Multi-Scale Audit (Univariate, Joint, Structural). Computes a global "Realism Score"
+#' using Adaptive Weighting based on the variance of the null distribution.
+#'
+#' @param obj An \code{ASMOT} object.
+#' @param B Integer. Number of bootstrap permutations for the null distribution (default = 100).
+#' @param weights Character or Numeric. If \code{"auto"} (default), weights are inversely proportional
+#'        to the null variance. If numeric vector of length 3, weights are fixed.
+#' @param rho Numeric. Mass penalty parameter for UOT.
+#' @param fast_structural Logical. If TRUE (default), uses Frobenius Norm as a fast proxy for 
+#'        Gromov-Wasserstein distance during the bootstrap loop to speed up computation.
+#'
+#' @return An object of class \code{asmot_audit_res} containing scores, p-values, and weights.
 #' @export
 asmot_audit <- function(obj, B = 100, weights = "auto", rho = NULL, fast_structural = TRUE) {
-
+  # (Implementation as provided in previous steps)
   # 1. Observed Distances
   u_res <- asmot_calculate(obj, "univariate", mode = "UOT", rho = rho)
   j_dist <- asmot_calculate(obj, "joint", mode = "UOT", rho = rho)
@@ -85,9 +97,16 @@ asmot_audit <- function(obj, B = 100, weights = "auto", rho = NULL, fast_structu
   return(res)
 }
 
-#' @title Classifier-Based Audit
+#' @title Run Adversarial Classifier Audit
+#' @description 
+#' Trains a Random Forest classifier to distinguish Real from Synthetic samples based on their
+#' Optimal Transport distance to the Real centroid. Serves as a "Turing Test" for the generator.
+#'
+#' @param obj An \code{ASMOT} object.
+#' @return A list containing the classification Accuracy (0.5 = Indistinguishable) and the data used for plotting.
 #' @export
 asmot_classifier <- function(obj) {
+  # (Implementation as provided in previous steps)
   real_center <- normalize_vec(colMeans(obj@real_ra))
   
   calc_dist <- function(mat) {
@@ -108,13 +127,4 @@ asmot_classifier <- function(obj) {
   accuracy <- mean(predict(model) == df$Label)
 
   return(list(Accuracy = accuracy, Data = df))
-}
-
-#' @title Compare Counts vs Relative Abundance
-#' @export
-asmot_bias_check <- function(obj) {
-  dist_ra <- asmot_calculate(obj, "joint", datatype = "ra", mode = "UOT")
-  dist_count <- asmot_calculate(obj, "joint", datatype = "counts", mode = "UOT")
-  ratio <- dist_count / dist_ra
-  return(list(Dist_RA = dist_ra, Dist_Counts = dist_count, Ratio = ratio))
 }
