@@ -11,7 +11,7 @@ Unlike standard ecological metrics (Bray-Curtis, Alpha Diversity) that treat tax
 
 ## Key Features
 
-### 🔹 Multi-Scale Auditing
+### Multi-Scale Auditing
 
 ASMOT decomposes "realism" into three mathematically distinct layers:
 
@@ -21,7 +21,7 @@ ASMOT decomposes "realism" into three mathematically distinct layers:
 | **Joint** | Is the sample geometry (composition) preserved? | Unbalanced Optimal Transport (UOT) |
 | **Structural** | Is the ecological network topology preserved? | Gromov-Wasserstein (GW) |
 
-###  Adaptive Weighting (New in v0.8)
+###  Adaptive Weighting 
 
 Realism scores are not arbitrary. ASMOT learns component weights from the **null distribution variance**, automatically prioritizing audit levels that are most stable and discriminative for your specific dataset.
 
