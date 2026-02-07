@@ -1,8 +1,22 @@
-#' @title Compute Multi-Scale Metagenomic Differences
-#' @description Calculates OT distances at specified levels.
+#' @title Calculate Multi-Scale OT Distances
+#' @description 
+#' Computes the Optimal Transport distance between Real and Synthetic data at a specified level of resolution.
+#'
+#' @param obj An \code{ASMOT} object.
+#' @param level Character string. One of:
+#' \itemize{
+#'   \item \code{"univariate"}: 1D Wasserstein distance on marginal taxon distributions.
+#'   \item \code{"joint"}: Unbalanced OT on the full sample-by-taxon geometry.
+#'   \item \code{"structural"}: Gromov-Wasserstein distance on taxon-taxon correlation networks.
+#' }
+#' @param datatype Character. \code{"ra"} (Relative Abundance, default) or \code{"counts"}.
+#' @param mode Character. \code{"UOT"} (Unbalanced, default) or \code{"OT"} (Balanced).
+#' @param rho Numeric. Mass penalty parameter. If NULL, estimated automatically via \code{estimate_rho}.
+#'
+#' @return A numeric distance value (for joint/structural) or a data frame (for univariate).
 #' @export
 asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT", rho = NULL) {
-
+  # (Implementation as provided in previous steps)
   if (datatype == "ra") {
     R <- obj@real_ra; S <- obj@synth_ra
   } else {
@@ -54,10 +68,23 @@ asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT",
   }
 }
 
-#' @title Audit High-Order (k-Dimensional) Interactions
+#' @title Scan High-Order Interactions
+#' @description 
+#' Monte Carlo probe of high-order interactions (k-way motifs). Randomly subsamples k taxa and
+#' computes the OT distance between their sub-geometries. Detects "mode collapse" or spurious correlations
+#' in complex cliques.
+#'
+#' @param obj An \code{ASMOT} object.
+#' @param k Integer. The dimension of the interaction to scan (default = 3).
+#' @param n_subsamples Integer. Number of random k-subsets to test (default = 50).
+#' @param mode Character. \code{"UOT"} or \code{"OT"}.
+#' @param rho Numeric. Penalty parameter.
+#' @param seed Integer. Random seed for reproducibility.
+#'
+#' @return An object of class \code{asmot_k_result} containing the mean distance and all subsample distances.
 #' @export
 asmot_k_scan <- function(obj, k = 3, n_subsamples = 50, mode = "UOT", rho = 1.0, seed = 42) {
-  
+  # (Implementation as provided in previous steps)
   set.seed(seed)
   R <- obj@real_ra; S <- obj@synth_ra
   n_taxa <- ncol(R)
