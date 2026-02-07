@@ -1,4 +1,3 @@
-
 # ASMOT: Auditing Synthetic Metagenomic Data with Multi-Scale Optimal Transport
 
 **ASMOT** is an R package for auditing the fidelity of synthetic metagenomic data using **Multi-Scale Optimal Transport**. It provides a principled, geometry-aware framework to compare real and synthetic microbiome datasets across marginal, joint, and structural levels of dependency.
@@ -11,7 +10,7 @@ Unlike standard ecological metrics (Bray-Curtis, Alpha Diversity) that treat tax
 
 ## Key Features
 
-### Multi-Scale Auditing
+### 🔹 Multi-Scale Auditing
 
 ASMOT decomposes "realism" into three mathematically distinct layers:
 
@@ -21,21 +20,17 @@ ASMOT decomposes "realism" into three mathematically distinct layers:
 | **Joint** | Is the sample geometry (composition) preserved? | Unbalanced Optimal Transport (UOT) |
 | **Structural** | Is the ecological network topology preserved? | Gromov-Wasserstein (GW) |
 
-###  Adaptive Weighting 
+### 🔹 Adaptive Weighting
 
 Realism scores are not arbitrary. ASMOT learns component weights from the **null distribution variance**, automatically prioritizing audit levels that are most stable and discriminative for your specific dataset.
 
-###  High-Order Interaction Scanning
+### 🔹 High-Order Interaction Scanning
 
-A Monte-Carlo probe of -dimensional taxon subsets using **phylogenetically grounded OT**. This detects "mode collapse" or "spurious correlations" in complex motifs (e.g.,  triplets) that simple pairwise correlations miss.
+A Monte-Carlo probe of -dimensional taxon subsets. This detects "mode collapse" or "spurious correlations" in complex motifs (e.g.,  triplets) that simple pairwise correlations miss.
 
-###  Zero-Inflation Robustness
+### 🔹 Benchmarking Ready
 
-Native support for **Unbalanced Optimal Transport**, allowing the metric to handle the extreme sparsity of microbiome data without artificial imputation.
-
-###  "Turing Test" via Classifiers
-
-Includes an adversarial audit module (`asmot_classifier`) that trains a Random Forest to distinguish real vs. synthetic samples based on their OT geometry.
+Includes built-in datasets (`synth_zinb`, `synth_htln`) to immediately benchmark different generative models against ground truth data (`amgut1.filt`).
 
 ---
 
@@ -53,60 +48,72 @@ devtools::install_github("FloAI/ASMOT")
 
 ---
 
-## Quick Start
+## Quick Start: Benchmarking Two Models
 
-### 1. Preprocess & Initialize
+This example demonstrates how to compare a **ZINB** (Zero-Inflated Negative Binomial) baseline against a newer **HTLN** model using the package's built-in data.
 
-ASMOT never applies hidden transformations. You explicitly choose your preprocessing (e.g., TSS for biology, CLR for correlations).
+### 1. Load Data & Create Objects
 
 ```r
 library(ASMOT)
 
-# Load your data (Rows = Samples, Cols = Taxa)
-# Preprocess explicitly (optional but recommended)
-real_data <- asmot_preprocess("real_counts.csv", method = "tss")
-synth_data <- asmot_preprocess("synth_counts.csv", method = "tss")
+# Load built-in datasets
+data("amgut1.filt")   # Real Ground Truth
+data("synth_zinb")    # Baseline Model
+data("synth_htln")    # New Model
 
-# Create the Audit Object
-# (Optionally pass a phylogenetic tree for ground-truth costs)
-obj <- create_asmot(real = real_data, synth = synth_data)
+# Create Audit Objects for both models
+# We compare both against the same real data
+obj_zinb <- create_asmot(real = amgut1.filt, synth = synth_zinb)
+obj_htln <- create_asmot(real = amgut1.filt, synth = synth_htln)
 
 ```
 
 ### 2. Run the Statistical Audit
 
-Use **Adaptive Weighting** (`weights="auto"`) to let the data determine the most important metric.
+Use `weights="auto"` to let the data determine the most important metric, or fixed weights for a strict comparison.
 
 ```r
-# Run audit with 100 bootstraps
-results <- asmot_audit(obj, B = 100, weights = "auto")
+# Run Audits (B=50 bootstraps)
+# Fixed weights allow for a fair, apples-to-apples comparison
+weights <- c(0.2, 0.4, 0.4) 
 
-# Print S3 Summary
-print(results)
-# Output:
-# Realism Score:   82.4%
-# P-value:         0.042 (Significant deviation detected)
-# Component Scores: ...
+res_zinb <- asmot_audit(obj_zinb, B = 50, weights = weights)
+res_htln <- asmot_audit(obj_htln, B = 50, weights = weights)
+
+# Print Scores
+print(paste("ZINB Realism Score:", res_zinb$realism_score))
+print(paste("HTLN Realism Score:", res_htln$realism_score))
 
 ```
 
-### 3. Visualize the "Realism Gap"
+### 3. Visual Benchmarking
 
-Generate a dashboard showing where the synthetic data falls relative to the natural variation of the real data.
+Visualize the "Realism Gap" between the two models.
 
 ```r
-plots <- asmot_plot_dashboard(results)
-print(plots)
+library(ggplot2)
+
+df <- data.frame(
+  Model = c("ZINB", "HTLN"),
+  Realism = c(res_zinb$realism_score, res_htln$realism_score)
+)
+
+ggplot(df, aes(x = Model, y = Realism, fill = Model)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  ylim(0, 100) +
+  labs(title = "Benchmark: ZINB vs HTLN", y = "ASMOT Realism Score (%)") +
+  theme_minimal()
 
 ```
 
 ### 4. Scan High-Order Interactions
 
-Check if the generator fails at complex motifs (e.g.,  or ).
+Check if the models fail at complex motifs (e.g.,  triplets).
 
 ```r
-# Scan dimensions k=1 to k=6
-scan <- asmot_plot_scan(obj, max_k = 6)
+# Scan dimensions k=1 to k=5
+scan <- asmot_plot_scan(obj_htln, max_k = 5)
 print(scan)
 
 ```
@@ -142,6 +149,9 @@ Standard metrics (like Euclidean distance or KL-Divergence) fail in high-dimensi
 If you use **ASMOT** in your research, please cite:
 
 > [Your Name], et al. (2024). "Auditing Synthetic Metagenomic Data with Multi-Scale Optimal Transport." *[Journal Name/Preprint]*.
+
+##References
+>
 
 ## License
 
