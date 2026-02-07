@@ -1,12 +1,15 @@
-#' @import ggplot2
-#' @import reshape2
-
 #' @title Plot Audit Dashboard
+#' @description 
+#' Visualizes the "Realism Gap" by plotting the null distribution of real-vs-real distances
+#' against the observed real-vs-synthetic distance.
+#'
+#' @param audit_res Result object from \code{asmot_audit}.
+#' @param bias_res (Optional) Result object from \code{asmot_bias_check}.
+#' @return A ggplot object.
 #' @export
 asmot_plot_dashboard <- function(audit_res, bias_res = NULL) {
   
-  
-  
+  # (Implementation as provided in previous steps)
   p1 <- ggplot(data.frame(d = audit_res$null_dist), aes(d)) +
     geom_density(fill = "#69b3a2", alpha = 0.6) +
     geom_vline(xintercept = audit_res$obs_dist, color = "red", linetype = "dashed", size=1) +
@@ -26,12 +29,19 @@ asmot_plot_dashboard <- function(audit_res, bias_res = NULL) {
   return(p1)
 }
 
-#' @title Plot Dimension Scan
+#' @title Plot High-Order Interaction Scan
+#' @description 
+#' Wrapper that runs \code{asmot_k_scan} for dimensions 1 to \code{max_k} and plots the error profile.
+#' Rising error indicates failure to capture complex ecological motifs.
+#'
+#' @param obj An \code{ASMOT} object.
+#' @param max_k Integer. Maximum dimension to scan (default = 8).
+#' @param seed Integer. Random seed.
+#' @return An object of class \code{asmot_k_scan} containing the plot and raw data.
 #' @export
 asmot_plot_scan <- function(obj, max_k = 8, seed = 42) {
   
-  
-  
+  # (Implementation as provided in previous steps)
   results <- data.frame()
   for (k in 1:max_k) {
     res <- asmot_k_scan(obj, k = k, n_subsamples = 30, seed = seed)
@@ -46,32 +56,4 @@ asmot_plot_scan <- function(obj, max_k = 8, seed = 42) {
   out <- list(plot = p, data = results)
   class(out) <- "asmot_k_scan"
   return(out)
-}
-
-#' @export
-asmot_plot_classifier <- function(class_res) {
-  
-  
-  
-  ggplot(class_res$Data, aes(x = OT_Distance, fill = Label)) +
-    geom_density(alpha = 0.5) +
-    labs(title = paste("Classifier Accuracy:", round(class_res$Accuracy, 2)),
-         subtitle = "Overlap = Realism. Separation = Artifacts.",
-         x = "Distance to Real Center", y = "Density") +
-    theme_minimal()
-}
-
-#' @export
-asmot_plot_sparsity <- function(obj) {
-  calc_stats <- function(mat, label) {
-    data.frame(Mean = colMeans(mat), Sparsity = colMeans(mat == 0), Dataset = label)
-  }
-  df <- rbind(calc_stats(obj@real_ra, "Real"), calc_stats(obj@synth_ra, "Synthetic"))
-  
-  
-  
-  ggplot(df, aes(x = Mean, y = Sparsity, color = Dataset)) +
-    geom_point(alpha = 0.5) + scale_x_log10() +
-    labs(title = "Sparsity vs Abundance", x = "Log10 Mean Abundance", y = "Frequency of Zeros") +
-    theme_minimal()
 }
