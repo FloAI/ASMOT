@@ -1,5 +1,7 @@
 library(ASMOT)
 library(ggplot2)
+set.seed(123) # <--- Add this before calling asmot_audit
+
 
 # --- 1. Load All Four Datasets ---
 # Ensure these files exist in your 'data/' folder
