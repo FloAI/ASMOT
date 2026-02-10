@@ -1,6 +1,6 @@
 Package: ASMOT
 Title: Auditing Synthetic Metagenomic Data with Multi-Scale Optimal Transport
-Version: 0.8.0
+Version: 0.1.0
 Authors@R: person("Flore N'kam Suguem", email = "nkamflore@gmail.com", role = c("aut", "cre"))
 Description: A framework for auditing the fidelity of synthetic microbiome data.
     ASMOT uses Multi-Scale Optimal Transport to quantify realism across 
