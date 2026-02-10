@@ -2,65 +2,55 @@
 #' @export
 asmot_audit <- function(obj, B = 100, weights = "auto", rho = NULL, fast_structural = TRUE) {
   
-  u_res <- asmot_calculate(obj, "univariate", mode = "UOT", rho = rho)
-  j_dist <- asmot_calculate(obj, "joint", mode = "UOT", rho = rho)
-  s_dist <- asmot_calculate(obj, "structural", mode = "UOT", rho = rho)
+  # 1. Observed Distances
+  u_res <- asmot_calculate(obj, "univariate")
+  j_dist <- asmot_calculate(obj, "joint", rho = rho)
+  s_dist <- asmot_calculate(obj, "structural")
   
   u_dist_mean <- mean(u_res$Distance)
-  
+
+  # 2. Bootstrap Null Distributions
   null_univ <- numeric(B)
   null_joint <- numeric(B)
   null_struct <- numeric(B)
   
   M <- obj@cost_matrix
-  if(is.null(rho)) rho <- estimate_rho(M)
+  if(is.null(rho)) rho <- quantile(M, 0.5)
+  lambda <- 0.05 * quantile(M, 0.5)
 
   for(i in 1:B) {
+    # Split real data
     idx <- sample(1:nrow(obj@real_ra), floor(nrow(obj@real_ra)/2))
     R1 <- obj@real_ra[idx, ]; R2 <- obj@real_ra[-idx, ]
 
+    # Univariate Null
     d_u_null <- sapply(1:ncol(R1), function(j) transport::wasserstein1d(R1[,j], R2[,j]))
     null_univ[i] <- mean(d_u_null)
 
-    # Use internal solver for Joint Null
-    D_samples <- as.matrix(dist(rbind(normalize_vec(colMeans(R1)), normalize_vec(colMeans(R2)))))
-    # (Simplified call for internal solver)
-    # Ideally we just call asmot_calculate logic here, but for speed we keep it inline or simple
-    # Note: For simplicity in the loop, we can just call T4transport::sinkhorn or our internal one
-    # But to match your code structure, let's keep it simple:
-    
-    # Recalculate Joint Distance for Null
-    # We construct a mini-problem
+    # Joint Null (Using our internal solver directly for speed)
     a <- normalize_vec(colMeans(R1))
     b <- normalize_vec(colMeans(R2))
-    null_joint[i] <- internal_uot_sinkhorn(a, b, M, lambda=0.1*median(M), rho=rho)
+    null_joint[i] <- internal_uot_sinkhorn(a, b, M, lambda = lambda, rho = rho)
 
+    # Structural Null
     C1 <- cor_to_dist(R1); C2 <- cor_to_dist(R2)
-    if(fast_structural) {
-      null_struct[i] <- norm(C1 - C2, type = "F") 
-    } else {
-      # FIXED: Use gw instead of ugw
-      null_struct[i] <- T4transport::gw(C1, C2)$distance
-    }
+    null_struct[i] <- norm(C1 - C2, type = "F") 
   }
 
+  # 3. Adaptive Weights
   if (identical(weights, "auto")) {
-    vars <- c(Univariate = var(null_univ), Joint = var(null_joint), Structural = var(null_struct))
+    vars <- c(var(null_univ), var(null_joint), var(null_struct))
     vars[vars < 1e-9] <- 1e-9
     inv_vars <- 1 / vars
     final_weights <- inv_vars / sum(inv_vars)
   } else {
     final_weights <- weights / sum(weights)
-    names(final_weights) <- c("Univariate", "Joint", "Structural")
   }
+  names(final_weights) <- c("Univariate", "Joint", "Structural")
 
+  # 4. Scores
   p_val_j <- mean(null_joint >= j_dist)
-  p_val_s <- if(fast_structural) {
-    obs_proxy <- norm(cor_to_dist(obj@real_ra) - cor_to_dist(obj@synth_ra), type = "F")
-    mean(null_struct >= obs_proxy)
-  } else {
-    mean(null_struct >= s_dist)
-  }
+  p_val_s <- mean(null_struct >= s_dist) # Direct comparison since we use Frobenius for both
   final_p <- min(p_val_j, p_val_s)
 
   s_u <- exp(-u_dist_mean)
@@ -87,12 +77,12 @@ asmot_audit <- function(obj, B = 100, weights = "auto", rho = NULL, fast_structu
 #' @export
 asmot_classifier <- function(obj) {
   real_center <- normalize_vec(colMeans(obj@real_ra))
-  
+  lambda <- 0.05 * quantile(obj@cost_matrix, 0.5)
+  rho <- quantile(obj@cost_matrix, 0.5)
+
   calc_dist <- function(mat) {
     sapply(1:nrow(mat), function(i) {
-      # Use internal solver here too
-      internal_uot_sinkhorn(normalize_vec(mat[i,]), real_center, obj@cost_matrix, 
-                            lambda=0.1*median(obj@cost_matrix), rho=1.0)
+      internal_uot_sinkhorn(normalize_vec(mat[i,]), real_center, obj@cost_matrix, lambda, rho)
     })
   }
 
