@@ -61,18 +61,18 @@ obj_cs_htln   <- create_asmot(real = amgut1.filt.cs, synth = synth_htln)
 
 # --- 3. Run Audits (B=50 for speed, use 100+ for paper) ---
 B_reps <- 50
-
+fixed_weights <- c(0.2, 0.4, 0.4)
 message("Running Audit 1/4: Standard vs ZINB...")
-res_filt_zinb <- asmot_audit(obj_filt_zinb, B = B_reps, weights = "auto")
+res_filt_zinb <- asmot_audit(obj_filt_zinb, B = B_reps, weights = fixed_weights)
 
 message("Running Audit 2/4: Standard vs HTLN...")
-res_filt_htln <- asmot_audit(obj_filt_htln, B = B_reps, weights = "auto")
+res_filt_htln <- asmot_audit(obj_filt_htln, B = B_reps, weights = fixed_weights)
 
 message("Running Audit 3/4: CS vs ZINB...")
-res_cs_zinb   <- asmot_audit(obj_cs_zinb, B = B_reps, weights = "auto")
+res_cs_zinb   <- asmot_audit(obj_cs_zinb, B = B_reps, weights = fixed_weights)
 
 message("Running Audit 4/4: CS vs HTLN...")
-res_cs_htln   <- asmot_audit(obj_cs_htln, B = B_reps, weights = "auto")
+res_cs_htln   <- asmot_audit(obj_cs_htln, B = B_reps, weights = fixed_weights)
 
 # --- 4. PRINT INTERPRETATIONS ---
 # This triggers the detailed text output for each
