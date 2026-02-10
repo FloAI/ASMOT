@@ -1,22 +1,8 @@
-#' @title Calculate Multi-Scale OT Distances
-#' @description 
-#' Computes the Optimal Transport distance between Real and Synthetic data at a specified level of resolution.
-#'
-#' @param obj An \code{ASMOT} object.
-#' @param level Character string. One of:
-#' \itemize{
-#'   \item \code{"univariate"}: 1D Wasserstein distance on marginal taxon distributions.
-#'   \item \code{"joint"}: Unbalanced OT on the full sample-by-taxon geometry.
-#'   \item \code{"structural"}: Gromov-Wasserstein distance on taxon-taxon correlation networks.
-#' }
-#' @param datatype Character. \code{"ra"} (Relative Abundance, default) or \code{"counts"}.
-#' @param mode Character. \code{"UOT"} (Unbalanced, default) or \code{"OT"} (Balanced).
-#' @param rho Numeric. Mass penalty parameter. If NULL, estimated automatically via \code{estimate_rho}.
-#'
-#' @return A numeric distance value (for joint/structural) or a data frame (for univariate).
+#' @title Compute Multi-Scale Metagenomic Differences
+#' @description Calculates OT distances at specified levels.
 #' @export
 asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT", rho = NULL) {
-  # (Implementation as provided in previous steps)
+
   if (datatype == "ra") {
     R <- obj@real_ra; S <- obj@synth_ra
   } else {
@@ -27,10 +13,14 @@ asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT",
   }
 
   M <- obj@cost_matrix
+  # Default rho estimation if NULL
   if (is.null(rho) && mode == "UOT") rho <- estimate_rho(M)
+  # Default lambda (entropy) for Sinkhorn
+  lambda <- 0.1 * median(M)
 
   # --- Level 1: Univariate ---
   if (level == "univariate") {
+    # Use transport::wasserstein1d for reliable 1D computation
     dists <- sapply(seq_along(obj@taxa_names), function(i) {
       transport::wasserstein1d(R[,i], S[,i])
     })
@@ -46,11 +36,13 @@ asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT",
     w_r <- rep(1/n_r, n_r); w_s <- rep(1/n_s, n_s)
 
     if (mode == "OT") {
+      # Exact OT using transport package
       res <- transport::transport(w_r, w_s, Cost_SS)
       return(sum(res$mass * res$cost))
     } else {
-      res <- T4transport::uot(w_r, w_s, Cost_SS, rho = rho)
-      return(res$distance)
+      # Unbalanced OT using our internal solver
+      res <- internal_uot_sinkhorn(w_r, w_s, Cost_SS, lambda = lambda, rho = rho)
+      return(res)
     }
   }
 
@@ -60,37 +52,28 @@ asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT",
     D_S <- cor_to_dist(S)
 
     if (mode == "OT") {
+      # Standard GW (Balanced)
       res <- T4transport::gw(D_R, D_S)
+      return(res$distance)
     } else {
+      # Unbalanced GW
       res <- T4transport::ugw(D_R, D_S, rho = rho)
+      return(res$distance)
     }
-    return(res$distance)
   }
 }
 
-#' @title Scan High-Order Interactions
-#' @description 
-#' Monte Carlo probe of high-order interactions (k-way motifs). Randomly subsamples k taxa and
-#' computes the OT distance between their sub-geometries. Detects "mode collapse" or spurious correlations
-#' in complex cliques.
-#'
-#' @param obj An \code{ASMOT} object.
-#' @param k Integer. The dimension of the interaction to scan (default = 3).
-#' @param n_subsamples Integer. Number of random k-subsets to test (default = 50).
-#' @param mode Character. \code{"UOT"} or \code{"OT"}.
-#' @param rho Numeric. Penalty parameter.
-#' @param seed Integer. Random seed for reproducibility.
-#'
-#' @return An object of class \code{asmot_k_result} containing the mean distance and all subsample distances.
+#' @title Audit High-Order (k-Dimensional) Interactions
 #' @export
 asmot_k_scan <- function(obj, k = 3, n_subsamples = 50, mode = "UOT", rho = 1.0, seed = 42) {
-  # (Implementation as provided in previous steps)
+  
   set.seed(seed)
   R <- obj@real_ra; S <- obj@synth_ra
   n_taxa <- ncol(R)
   if (k > n_taxa) stop("Dimension k cannot exceed total number of taxa.")
 
   distances <- numeric(n_subsamples)
+  lambda <- 0.1 * median(obj@cost_matrix)
 
   for (i in 1:n_subsamples) {
     idx <- sample(1:n_taxa, k)
@@ -101,15 +84,53 @@ asmot_k_scan <- function(obj, k = 3, n_subsamples = 50, mode = "UOT", rho = 1.0,
     b <- normalize_vec(colMeans(S_sub))
 
     if (mode == "OT") {
-      res <- T4transport::sinkhorn(a, b, M_sub, lambda=0.05)
+      # T4transport::sinkhorn for balanced case
+      res <- T4transport::sinkhorn(a, b, M_sub, lambda = lambda)
       distances[i] <- res$distance
     } else {
-      res <- T4transport::uot(a, b, M_sub, rho = rho)
-      distances[i] <- res$distance
+      # Use internal UOT solver
+      distances[i] <- internal_uot_sinkhorn(a, b, M_sub, lambda = lambda, rho = rho)
     }
   }
   
   res <- list(k = k, mean_distance = mean(distances), all_distances = distances)
   class(res) <- "asmot_k_result"
   return(res)
+}
+
+# --- Internal Solver (The Fix) ---
+
+#' Internal Unbalanced Sinkhorn Solver
+#' Implements Sinkhorn-Knopp algorithm with marginal relaxation (KL penalty).
+#' @keywords internal
+internal_uot_sinkhorn <- function(a, b, cost, lambda, rho, n_iter = 100) {
+  # Avoid log(0)
+  a <- pmax(a, 1e-10)
+  b <- pmax(b, 1e-10)
+  
+  # Kernel
+  K <- exp(-cost / lambda)
+  
+  # Scaling factor for unbalanced update (rho / (rho + epsilon))
+  fi <- rho / (rho + lambda)
+  
+  # Initialization
+  u <- rep(1, length(a))
+  v <- rep(1, length(b))
+  
+  for(i in 1:n_iter) {
+    # Update u
+    Kv <- as.vector(K %*% v)
+    u <- (a / Kv)^fi
+    
+    # Update v
+    Ktu <- as.vector(t(K) %*% u)
+    v <- (b / Ktu)^fi
+  }
+  
+  # Calculate Transport Plan Gamma
+  gamma <- diag(u) %*% K %*% diag(v)
+  
+  # Return Total Transport Cost (Primal Objective approximation)
+  return(sum(gamma * cost))
 }
