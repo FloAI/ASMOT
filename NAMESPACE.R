@@ -1,3 +1,4 @@
+# Export Classes and Functions
 exportClasses(ASMOT)
 export(create_asmot)
 export(asmot_calculate)
@@ -10,15 +11,20 @@ export(asmot_plot_dashboard)
 export(asmot_plot_scan)
 export(asmot_plot_sparsity)
 export(asmot_plot_classifier)
-import(methods)
-import(stats)
-import(transport)
-import(T4transport)
-import(ggplot2)
-import(reshape2)
-import(randomForest)
-importFrom(phangorn, cophenetic.phylo)
-# Export S3 methods
+
+# Export S3 Methods
 export(print.asmot_audit_res)
 export(print.asmot_k_scan)
 export(print.asmot_k_result)
+
+# Imports (Specific to avoid conflicts)
+import(methods)
+import(stats)
+import(ggplot2)
+import(reshape2)
+import(randomForest)
+
+# Handle specific function imports to avoid namespace clashes
+importFrom(transport, wasserstein1d, transport)
+importFrom(T4transport, gw, ugw, sinkhorn)
+importFrom(phangorn, cophenetic.phylo)
