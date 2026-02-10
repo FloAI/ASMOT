@@ -8,19 +8,16 @@ asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT",
   } else {
     R <- obj@real_counts; S <- obj@synth_counts
     if (level %in% c("joint", "structural")) {
-      warning("Using raw counts for Joint/Structural analysis is not recommended. Consider 'ra' or preprocess first.")
+      warning("Using raw counts for Joint/Structural analysis is not recommended.")
     }
   }
 
   M <- obj@cost_matrix
-  # Default rho estimation if NULL
   if (is.null(rho) && mode == "UOT") rho <- estimate_rho(M)
-  # Default lambda (entropy) for Sinkhorn
   lambda <- 0.1 * median(M)
 
   # --- Level 1: Univariate ---
   if (level == "univariate") {
-    # Use transport::wasserstein1d for reliable 1D computation
     dists <- sapply(seq_along(obj@taxa_names), function(i) {
       transport::wasserstein1d(R[,i], S[,i])
     })
@@ -36,11 +33,10 @@ asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT",
     w_r <- rep(1/n_r, n_r); w_s <- rep(1/n_s, n_s)
 
     if (mode == "OT") {
-      # Exact OT using transport package
       res <- transport::transport(w_r, w_s, Cost_SS)
       return(sum(res$mass * res$cost))
     } else {
-      # Unbalanced OT using our internal solver
+      # Use internal UOT solver defined below
       res <- internal_uot_sinkhorn(w_r, w_s, Cost_SS, lambda = lambda, rho = rho)
       return(res)
     }
@@ -51,15 +47,10 @@ asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT",
     D_R <- cor_to_dist(R)
     D_S <- cor_to_dist(S)
 
-    if (mode == "OT") {
-      # Standard GW (Balanced)
-      res <- T4transport::gw(D_R, D_S)
-      return(res$distance)
-    } else {
-      # Unbalanced GW
-      res <- T4transport::ugw(D_R, D_S, rho = rho)
-      return(res$distance)
-    }
+    # Use Standard Gromov-Wasserstein for both modes
+    # (Since taxa sets are identical, balanced GW is sufficient and robust)
+    res <- T4transport::gw(D_R, D_S)
+    return(res$distance)
   }
 }
 
@@ -84,11 +75,9 @@ asmot_k_scan <- function(obj, k = 3, n_subsamples = 50, mode = "UOT", rho = 1.0,
     b <- normalize_vec(colMeans(S_sub))
 
     if (mode == "OT") {
-      # T4transport::sinkhorn for balanced case
       res <- T4transport::sinkhorn(a, b, M_sub, lambda = lambda)
       distances[i] <- res$distance
     } else {
-      # Use internal UOT solver
       distances[i] <- internal_uot_sinkhorn(a, b, M_sub, lambda = lambda, rho = rho)
     }
   }
@@ -98,39 +87,22 @@ asmot_k_scan <- function(obj, k = 3, n_subsamples = 50, mode = "UOT", rho = 1.0,
   return(res)
 }
 
-# --- Internal Solver (The Fix) ---
-
 #' Internal Unbalanced Sinkhorn Solver
-#' Implements Sinkhorn-Knopp algorithm with marginal relaxation (KL penalty).
 #' @keywords internal
 internal_uot_sinkhorn <- function(a, b, cost, lambda, rho, n_iter = 100) {
-  # Avoid log(0)
   a <- pmax(a, 1e-10)
   b <- pmax(b, 1e-10)
-  
-  # Kernel
   K <- exp(-cost / lambda)
-  
-  # Scaling factor for unbalanced update (rho / (rho + epsilon))
   fi <- rho / (rho + lambda)
-  
-  # Initialization
   u <- rep(1, length(a))
   v <- rep(1, length(b))
   
   for(i in 1:n_iter) {
-    # Update u
     Kv <- as.vector(K %*% v)
     u <- (a / Kv)^fi
-    
-    # Update v
     Ktu <- as.vector(t(K) %*% u)
     v <- (b / Ktu)^fi
   }
-  
-  # Calculate Transport Plan Gamma
   gamma <- diag(u) %*% K %*% diag(v)
-  
-  # Return Total Transport Cost (Primal Objective approximation)
   return(sum(gamma * cost))
 }
