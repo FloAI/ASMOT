@@ -57,7 +57,8 @@ asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT",
     
     # Frobenius Norm of the difference between distance matrices
     # Measures how much the "web of connections" has distorted
-    diff <- norm(D_R - D_S, type = "F")
+    # Divide by number of taxa to make it independent of matrix size
+    diff <- norm(D_R - D_S, type = "F") / ncol(R)
     return(diff)
   }
 }
