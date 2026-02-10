@@ -61,7 +61,7 @@ obj_cs_htln   <- create_asmot(real = amgut1.filt.cs, synth = synth_htln)
 
 # --- 3. Run Audits (B=50 for speed, use 100+ for paper) ---
 B_reps <- 50
-fixed_weights <- c(0.2, 0.4, 0.4)
+fixed_weights <- c(1, 1, 1)
 message("Running Audit 1/4: Standard vs ZINB...")
 res_filt_zinb <- asmot_audit(obj_filt_zinb, B = B_reps, weights = fixed_weights)
 
