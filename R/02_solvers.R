@@ -7,16 +7,15 @@ asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT",
     R <- obj@real_ra; S <- obj@synth_ra
   } else {
     R <- obj@real_counts; S <- obj@synth_counts
-    if (level %in% c("joint", "structural")) {
-      warning("Using raw counts for Joint/Structural analysis is not recommended.")
-    }
   }
 
   M <- obj@cost_matrix
-  if (is.null(rho) && mode == "UOT") rho <- estimate_rho(M)
-  lambda <- 0.1 * median(M)
+  
+  # Heuristic for rho and lambda
+  if (is.null(rho)) rho <- quantile(M, 0.5)
+  lambda <- 0.05 * quantile(M, 0.5)
 
-  # --- Level 1: Univariate ---
+  # --- Level 1: Univariate (1D Wasserstein) ---
   if (level == "univariate") {
     dists <- sapply(seq_along(obj@taxa_names), function(i) {
       transport::wasserstein1d(R[,i], S[,i])
@@ -24,47 +23,53 @@ asmot_calculate <- function(obj, level = "joint", datatype = "ra", mode = "UOT",
     return(data.frame(Taxon = obj@taxa_names, Distance = dists))
   }
 
-  # --- Level 2: Joint ---
+  # --- Level 2: Joint (Sample Geometry) ---
   else if (level == "joint") {
+    # 1. Compute Cost Matrix between ALL samples (Real vs Synthetic)
+    # We essentially append S to R to compute the cross-distance
     D_samples <- as.matrix(dist(rbind(R, S)))
     n_r <- nrow(R); n_s <- nrow(S)
-    Cost_SS <- D_samples[1:n_r, (n_r + 1):(n_r + n_s)]
+    
+    # Extract the Real-vs-Synthetic block
+    Cost_RS <- D_samples[1:n_r, (n_r + 1):(n_r + n_s)]
 
-    w_r <- rep(1/n_r, n_r); w_s <- rep(1/n_s, n_s)
+    # Weights (Uniform)
+    w_r <- rep(1/n_r, n_r)
+    w_s <- rep(1/n_s, n_s)
 
     if (mode == "OT") {
-      res <- transport::transport(w_r, w_s, Cost_SS)
+      # Exact OT (Balanced) using 'transport' package
+      res <- transport::transport(w_r, w_s, Cost_RS)
       return(sum(res$mass * res$cost))
     } else {
-      # Use internal UOT solver defined below
-      res <- internal_uot_sinkhorn(w_r, w_s, Cost_SS, lambda = lambda, rho = rho)
+      # Unbalanced Sinkhorn (Robust Internal Solver)
+      res <- internal_uot_sinkhorn(w_r, w_s, Cost_RS, lambda = lambda, rho = rho)
       return(res)
     }
   }
 
-  # --- Level 3: Structural ---
+  # --- Level 3: Structural (Network Topology) ---
   else if (level == "structural") {
+    # Since taxa are ALIGNED (same columns), we can compare correlation structures directly.
+    # This is equivalent to Gromov-Wasserstein assuming the Identity mapping is optimal.
     D_R <- cor_to_dist(R)
     D_S <- cor_to_dist(S)
-
-    # Use Standard Gromov-Wasserstein for both modes
-    # (Since taxa sets are identical, balanced GW is sufficient and robust)
-    res <- T4transport::gw(D_R, D_S)
-    return(res$distance)
+    
+    # Frobenius Norm of the difference between distance matrices
+    # Measures how much the "web of connections" has distorted
+    diff <- norm(D_R - D_S, type = "F")
+    return(diff)
   }
 }
 
-#' @title Audit High-Order (k-Dimensional) Interactions
+#' @title Audit High-Order Interactions
 #' @export
 asmot_k_scan <- function(obj, k = 3, n_subsamples = 50, mode = "UOT", rho = 1.0, seed = 42) {
-  
   set.seed(seed)
   R <- obj@real_ra; S <- obj@synth_ra
   n_taxa <- ncol(R)
-  if (k > n_taxa) stop("Dimension k cannot exceed total number of taxa.")
-
   distances <- numeric(n_subsamples)
-  lambda <- 0.1 * median(obj@cost_matrix)
+  lambda <- 0.05 * median(obj@cost_matrix)
 
   for (i in 1:n_subsamples) {
     idx <- sample(1:n_taxa, k)
@@ -74,12 +79,8 @@ asmot_k_scan <- function(obj, k = 3, n_subsamples = 50, mode = "UOT", rho = 1.0,
     a <- normalize_vec(colMeans(R_sub))
     b <- normalize_vec(colMeans(S_sub))
 
-    if (mode == "OT") {
-      res <- T4transport::sinkhorn(a, b, M_sub, lambda = lambda)
-      distances[i] <- res$distance
-    } else {
-      distances[i] <- internal_uot_sinkhorn(a, b, M_sub, lambda = lambda, rho = rho)
-    }
+    # Use internal solver for consistency
+    distances[i] <- internal_uot_sinkhorn(a, b, M_sub, lambda = lambda, rho = rho)
   }
   
   res <- list(k = k, mean_distance = mean(distances), all_distances = distances)
@@ -87,22 +88,37 @@ asmot_k_scan <- function(obj, k = 3, n_subsamples = 50, mode = "UOT", rho = 1.0,
   return(res)
 }
 
+# --- ROBUST INTERNAL SOLVERS (No external dependencies) ---
+
 #' Internal Unbalanced Sinkhorn Solver
 #' @keywords internal
 internal_uot_sinkhorn <- function(a, b, cost, lambda, rho, n_iter = 100) {
+  # Add epsilon to avoid division by zero
   a <- pmax(a, 1e-10)
   b <- pmax(b, 1e-10)
+  
+  # Gibbs Kernel
   K <- exp(-cost / lambda)
+  
+  # Scaling power (Soft marginal constraint)
   fi <- rho / (rho + lambda)
+  
+  # Init potentials
   u <- rep(1, length(a))
   v <- rep(1, length(b))
   
   for(i in 1:n_iter) {
+    # Sinkhorn iterations
     Kv <- as.vector(K %*% v)
     u <- (a / Kv)^fi
+    
     Ktu <- as.vector(t(K) %*% u)
     v <- (b / Ktu)^fi
   }
+  
+  # Compute Transport Plan
   gamma <- diag(u) %*% K %*% diag(v)
+  
+  # Return Cost
   return(sum(gamma * cost))
 }
